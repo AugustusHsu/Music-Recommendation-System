@@ -1,2 +1,2 @@
-data/*.tsv
+data/*
 .ipynb_checkpoints/
