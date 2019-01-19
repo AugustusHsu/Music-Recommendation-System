@@ -66,8 +66,8 @@ class Recommendation_Model:
         self.label_idx = tf.placeholder(dtype=tf.int32,
                                         shape=[None, 1],
                                         name='label_idx')
-        self.rnn_seq_len = tf.placeholder(tf.int32, shape=[None], 
-                                          name='seq_len')
+        #self.rnn_seq_len = tf.placeholder(tf.int32, shape=[None], 
+        #                                  name='seq_len')
         
     # Song one hot layer
     def add_one_hot_layer(self):
@@ -121,7 +121,7 @@ class Recommendation_Model:
                         cell_fw=fw_rnn_cell,
                         cell_bw=bw_rnn_cell,
                         inputs=self.embedding_output,
-                        sequence_length=self.rnn_seq_len,
+                        #sequence_length=self.rnn_seq_len,
                         dtype=tf.float32)
                 # In case of Bi-RNN, concatenate the forward and the backward RNN outputs
                 if isinstance(rnn_output, tuple):
@@ -168,6 +168,7 @@ class Recommendation_Model:
             self.output_weight = tf.Variable(initial_value, name='output_weight')
             self.output_bais = tf.Variable(tf.zeros(shape=[self.output_dim]), name='output_bais')
             self.Output = tf.matmul(self.FC_output, self.output_weight) + self.output_bais
+            #self.Output = tf.nn.softmax(self.Output)
             print('Output')
             print(self.Output.shape)
             
@@ -175,7 +176,7 @@ class Recommendation_Model:
     def initialize_session(self, Model):
         init_op = tf.global_variables_initializer()
         self.sess = tf.Session(graph=Model)
-        self.sess.run(tf.initialize_all_variables())
+        self.sess.run(tf.local_variables_initializer())
         self.sess.run(init_op)
     
     # Calculate cross-entropy loss
@@ -189,16 +190,26 @@ class Recommendation_Model:
         
         # Calculate cross-entropy loss
         with tf.name_scope('loss'):
-            log_loss = tf.nn.softmax_cross_entropy_with_logits(logits=self.Output, labels=self.onehot_label)
+            log_loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.Output, labels=self.onehot_label)
             self.loss = tf.reduce_mean(log_loss)
             
-    def accuracy(self):
+    def acc(self):
         # Calculate accuracy
         with tf.name_scope('accuracy'):
+            #self.accuracy = tf.metrics.accuracy(labels=tf.argmax(self.onehot_label, 1), 
+            #                                    predictions=tf.argmax(self.Output, 1))
             predictions = tf.argmax(self.Output, 1, name='predictions')
             correct_pred = tf.equal(predictions, tf.argmax(self.onehot_label, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-        
+    '''def vali_acc(self):
+        with tf.variable_scope('VALI_ONE_HOT'):
+            self.onehot_vali_label = tf.one_hot(self.label_idx, self.song_size, name='vali_label_one_hot')
+            self.onehot_vali_label = tf.reshape(self.onehot_vali_label, [-1, self.song_size])
+            print('onehot_vali_label')
+            print(self.onehot_vali_label.shape)
+        with tf.name_scope('accuracy'):
+            self.vali_accuracy = tf.metrics.accuracy(labels=tf.argmax(self.onehot_vali_label, 1), 
+                                                predictions=tf.argmax(self.Output))'''
     def All_Model(self):
         self.add_one_hot_layer()
         self.create_embedding()
@@ -227,7 +238,7 @@ class Recommendation_Model:
             #tf_config.gpu_options.allow_growth=True
             self.add_placeholder()
             self.All_Model()
-            self.accuracy()
+            self.acc()
             self.initialize_session(Model)
             print('Graph built.')
     
@@ -242,40 +253,42 @@ class Recommendation_Model:
             Song_X = Song_X[shuffle_indices]
             Song_Y = Song_Y[shuffle_indices]
             #random
-            random_size = 1
-            for i in tqdm.tqdm(range(Song_X.shape[0]//random_size)):
-                if random_size == 1:
-                    start = i
-                    end = i + 1
-                else:
-                    idx = np.random.randint(Song_X.shape[0]) - 1
-                    start = min(idx, Song_X.shape[0] - 1)
-                    end = min(idx + 1, Song_X.shape[0])
+            for i in tqdm.tqdm(range(Song_X.shape[0]//self.batch_size + 1)):
+                start = i * self.batch_size
+                end = (i + 1) * self.batch_size
+                if end >= Song_X.shape[0]:
+                    end = Song_X.shape[0]
                 #song_input label_idx rnn_seq_len
                 Song_input = Song_X[start:end,:]
                 #Tag_input = Tag_X[start:end,:,:]
                 Song_label = Song_Y[start:end,:]
-                feed_dict = {self.song_input: Song_input, 
-                             #model.Tag_Part.input_x: Tag_input, 
-                             self.label_idx: Song_label, 
-                             self.rnn_seq_len: [5], 
-                             #model.Tag_Part.keep_prob: 0.9
-                            }
-                _, train_loss, train_accuracy = self.sess.run([self.train_op, 
+                self.feed_dict = {self.song_input: Song_input, 
+                                  #model.Tag_Part.input_x: Tag_input, 
+                                  self.label_idx: Song_label, 
+                                  #self.rnn_seq_len: None, 
+                                  #model.Tag_Part.keep_prob: 0.9
+                                 }
+                _, train_loss, train_accuracy, output = self.sess.run([self.train_op, 
                                                                self.loss, 
-                                                               self.accuracy],
-                                                              feed_dict=feed_dict)
-            print("train loss: {:.20f} train accuracy: {:.3f}\n".format(train_loss, train_accuracy))
+                                                               self.accuracy,
+                                                               self.Output],
+                                                              feed_dict=self.feed_dict)
+            #print(output)
+            #stream_vars = [i for i in tf.local_variables()]
+            print("train loss: {:.8f} train accuracy: {}\n".format(train_loss, 
+                  train_accuracy))
+            
+            
             
             #Validation
             vali_feed = {self.song_input: Vali_Song_X, 
                          #model.Tag_Part.input_x: Tag_input, 
                          self.label_idx: Vali_Song_Y, 
-                         self.rnn_seq_len: [5], 
+                         #self.rnn_seq_len: None, 
                          #model.Tag_Part.keep_prob: 0.9
                          }
-            vali_accuracy = self.sess.run(self.accuracy, feed_dict=vali_feed)
-            print("vali accuracy: {:.3f}\n".format(vali_accuracy))
+            vali_acc = self.sess.run(self.accuracy, feed_dict=vali_feed)
+            print("vali accuracy: ", vali_acc)
     
     
     
