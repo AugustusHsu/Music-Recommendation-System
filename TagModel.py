@@ -15,15 +15,6 @@ class TagModel(object):
         self.tag_input = tf.placeholder(dtype=tf.int32, 
                                          shape=[None, setting.num_song, setting.num_tag], 
                                          name='Tag_Input')
-        
-    # Tag one hot layer
-    def add_one_hot_layer(self):
-        with tf.variable_scope('TAG_ONE_HOT'):
-            onehot_input = tf.one_hot(indices=self.tag_input, 
-                                      depth=setting.tag_size,
-                                      name='tag_one_hot')
-            print('onehot_input')
-            print(onehot_input.shape)
             
     # Tag embedding layer
     def create_embedding(self):

@@ -16,15 +16,6 @@ class SongModel(object):
                                          shape=[None, setting.num_song], 
                                          name='Song_Input')
         
-    # Song one hot layer
-    def add_one_hot_layer(self):
-        with tf.variable_scope('SONG_ONE_HOT'):
-            onehot_input = tf.one_hot(indices=self.song_input, 
-                                      depth=setting.song_size,
-                                      name='song_one_hot')
-            print('song_onehot_input')
-            print(onehot_input.shape)
-        
     # Song embedding layer
     def create_embedding(self):
         with tf.variable_scope('SONG_EMBEDDING'):

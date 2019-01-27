@@ -35,7 +35,8 @@ class Recommendation_Model(Setting.setting):
         print('FC_input')
         print(self.FC_input.shape)
         with tf.name_scope('FULLY_CONNECTED_LAYER'):
-            initial_value = tf.truncated_normal([self.FC_input.shape[1].value, setting.fully_neuron],
+            initial_value = tf.truncated_normal([self.FC_input.shape[1].value, 
+                                                 setting.fully_neuron],
                                                 stddev=0.1)
             self.fully_weight = tf.Variable(initial_value, name='fully_weight')
             self.fully_bais = tf.Variable(tf.zeros(shape=[setting.fully_neuron]), name='fully_bais')
@@ -55,10 +56,9 @@ class Recommendation_Model(Setting.setting):
             
     # Initialize all variables
     def initialize_session(self, Model):
-        init_op = tf.global_variables_initializer()
         self.sess = tf.Session(graph=Model)
         self.sess.run(tf.local_variables_initializer())
-        self.sess.run(init_op)
+        self.sess.run(tf.global_variables_initializer())
     
     # Calculate cross-entropy loss
     def compute_loss(self):
@@ -71,9 +71,22 @@ class Recommendation_Model(Setting.setting):
         
         # Calculate cross-entropy loss
         with tf.name_scope('loss'):
-            log_loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.Output, labels=self.onehot_label)
+            log_loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.Output, 
+                                                                  labels=self.onehot_label)
             self.loss = tf.reduce_mean(log_loss)
             
+    def create_optimizer(self):
+        # Create optimizer
+        with tf.name_scope('optimization'):
+            optimizer = tf.train.AdamOptimizer(learning_rate=setting.learning_rate)
+            # Gradients
+            if setting.grad_clip > 0:
+                grads, vs = zip(*optimizer.compute_gradients(self.loss))
+                grads, _ = tf.clip_by_global_norm(grads, setting.grad_clip)
+                self.train_op = optimizer.apply_gradients(zip(grads, vs))
+            else:
+                self.train_op = optimizer.minimize(self.loss)
+                
     def acc(self):
         # Calculate accuracy
         with tf.name_scope('accuracy'):
@@ -82,15 +95,10 @@ class Recommendation_Model(Setting.setting):
             predictions = tf.argmax(self.Output, 1, name='predictions')
             correct_pred = tf.equal(predictions, tf.argmax(self.onehot_label, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-    '''def vali_acc(self):
-        with tf.variable_scope('VALI_ONE_HOT'):
-            self.onehot_vali_label = tf.one_hot(self.label_idx, self.song_size, name='vali_label_one_hot')
-            self.onehot_vali_label = tf.reshape(self.onehot_vali_label, [-1, self.song_size])
-            print('onehot_vali_label')
-            print(self.onehot_vali_label.shape)
-        with tf.name_scope('accuracy'):
-            self.vali_accuracy = tf.metrics.accuracy(labels=tf.argmax(self.onehot_vali_label, 1), 
-                                                predictions=tf.argmax(self.Output))'''
+            
+    def create_saver(self):
+        self.saver = tf.train.Saver()
+        
     def All_Model(self):
         #Song Model
         song_model.add_placeholder()
@@ -109,41 +117,31 @@ class Recommendation_Model(Setting.setting):
         self.add_placeholder()
         self.create_fully_layer()
         self.compute_loss()
-        # Create optimizer
-        with tf.name_scope('optimization'):
-            optimizer = tf.train.AdamOptimizer(learning_rate=setting.learning_rate)
-            # Gradients
-            if setting.grad_clip > 0:
-                grads, vs = zip(*optimizer.compute_gradients(self.loss))
-                grads, _ = tf.clip_by_global_norm(grads, setting.grad_clip)
-                self.train_op = optimizer.apply_gradients(zip(grads, vs))
-            else:
-                self.train_op = optimizer.minimize(self.loss)
+        self.create_optimizer()
 
     def build_graph(self):
+        self.create_saver()
         Model = tf.Graph()
-        #tf.reset_default_graph()
-        with Model.as_default():            
-            #tf_config = tf.ConfigProto(allow_soft_placement=True, 
-            #                            log_device_placement=False)
-            #tf_config.per_process_gpu_memory_fraction = 0.8
-            #tf_config.gpu_options.allow_growth=True
+        with Model.as_default():
             self.All_Model()
             self.acc()
             self.initialize_session(Model)
             print('Graph built.')
-    
+            
+    def save_model(self, model_name = 'Music_Recommendation'):
+        self.saver.save(self.sess, setting.save_path + model_name + '.ckpt')
 
     def train(self, Song_X, Tag_X, Song_Y, Vali_Song_X, Vali_Tag_X, Vali_Song_Y):
         assert len(Song_X) == len(Song_Y)
-        for epoch in range(setting.epochs + 1):
-            print('-------------------- Epoch {} of {} --------------------'.format(epoch,
-                                                                                    setting.epochs))
+        for epoch in range(setting.epochs):
+            print('------------------ Epoch {} of {} ------------------'.format(epoch + 1,
+                  setting.epochs))
             # shuffle the input data before every epoch.
             shuffle_indices = np.random.permutation(len(Song_X))
             Song_X = Song_X[shuffle_indices]
             Song_Y = Song_Y[shuffle_indices]
             #batch
+            Train_sum = 0
             for i in tqdm.tqdm(range(Song_X.shape[0]//setting.batch_size + 1)):
                 start = i * setting.batch_size
                 end = (i + 1) * setting.batch_size
@@ -157,29 +155,37 @@ class Recommendation_Model(Setting.setting):
                 Song_label = Song_Y[start:end,:]
                 self.feed_dict = {song_model.song_input: Song_input, 
                                   tag_model.tag_input: Tag_input, 
-                                  self.label_idx: Song_label, 
-                                  #self.rnn_seq_len: None, 
-                                  #model.Tag_Part.keep_prob: 0.9
+                                  self.label_idx: Song_label
                                  }
                 _, train_loss, train_accuracy, output = self.sess.run([self.train_op, 
                                                                self.loss, 
                                                                self.accuracy,
                                                                self.Output],
                                                               feed_dict=self.feed_dict)
-            #print(output)
-            #stream_vars = [i for i in tf.local_variables()]
+                Train_sum = Train_sum + train_accuracy
             print("train loss: {:.8f} train accuracy: {}\n".format(train_loss, 
-                  train_accuracy))
+                  Train_sum/(Song_X.shape[0]//setting.batch_size)))
             
             #Validation
-            vali_feed = {song_model.song_input: Vali_Song_X, 
-                         tag_model.tag_input: Vali_Tag_X, 
-                         self.label_idx: Vali_Song_Y, 
-                         #self.rnn_seq_len: None, 
-                         #model.Tag_Part.keep_prob: 0.9
-                         }
-            vali_acc = self.sess.run(self.accuracy, feed_dict=vali_feed)
-            print("vali accuracy: ", vali_acc)
+            Vali_sum = 0
+            for i in range(Vali_Song_X.shape[0]//setting.batch_size + 1):
+                start = i * setting.batch_size
+                end = (i + 1) * setting.batch_size
+                if end > Vali_Song_X.shape[0]:
+                    end = Vali_Song_X.shape[0]
+                if start == Vali_Song_X.shape[0]:
+                    continue
+                #song_input label_idx rnn_seq_len
+                Vali_Song_input = Song_X[start:end,:]
+                Vali_Tag_input = Tag_X[start:end,:,:]
+                Vali_Song_label = Song_Y[start:end,:]
+                vali_feed = {song_model.song_input: Vali_Song_input, 
+                             tag_model.tag_input: Vali_Tag_input, 
+                             self.label_idx: Vali_Song_label
+                             }
+                vali_acc = self.sess.run(self.accuracy, feed_dict=vali_feed)
+                Vali_sum = Vali_sum + vali_acc
+            print("vali accuracy: ", Vali_sum / (Vali_Song_X.shape[0]//setting.batch_size))
     
     
     

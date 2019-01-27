@@ -33,17 +33,17 @@ class setting(object):
         self.song_size = 130009
         self.num_song = 5
         self.song_embedding_dim = 50
-        self.song_rnn_size = 5
-        self.song_num_rnn_layers = 1
-        self.song_keep_probability = None
+        self.song_rnn_size = 128
+        self.song_num_rnn_layers = 2
+        self.song_keep_probability = 0.8
         
         #Tag Model Setting
         self.tag_size = 16141
         self.num_tag = 3
         self.tag_embedding_dim = 25
-        self.tag_rnn_size = 5
-        self.tag_num_rnn_layers = 1
-        self.tag_keep_probability = None
+        self.tag_rnn_size = 128
+        self.tag_num_rnn_layers = 2
+        self.tag_keep_probability = 0.8
         
         self.batch_size = 64
         self.fully_neuron=50
