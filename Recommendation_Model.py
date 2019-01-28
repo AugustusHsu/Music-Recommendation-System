@@ -120,10 +120,10 @@ class Recommendation_Model(Setting.setting):
         self.create_optimizer()
 
     def build_graph(self):
-        self.create_saver()
         Model = tf.Graph()
         with Model.as_default():
             self.All_Model()
+            self.create_saver()
             self.acc()
             self.initialize_session(Model)
             print('Graph built.')
