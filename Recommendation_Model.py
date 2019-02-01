@@ -140,6 +140,7 @@ class Recommendation_Model():
             Song_Y = Song_Y[shuffle_indices]
             #batch
             Train_sum = 0
+            batch_count = 0
             for i in tqdm.tqdm(range(Song_X.shape[0]//self.setting.batch_size + 1)):
                 start = i * self.setting.batch_size
                 end = (i + 1) * self.setting.batch_size
@@ -161,11 +162,13 @@ class Recommendation_Model():
                                                                self.Output],
                                                               feed_dict=self.feed_dict)
                 Train_sum = Train_sum + train_accuracy
+                batch_count = batch_count + 1
             print("train loss: {:.8f} train accuracy: {}\n".format(train_loss, 
-                  Train_sum/(Song_X.shape[0]//self.setting.batch_size)))
+                  Train_sum/batch_count))
             
             #Validation
             Vali_sum = 0
+            batch_count = 0
             for i in range(Vali_Song_X.shape[0]//self.setting.batch_size + 1):
                 start = i * self.setting.batch_size
                 end = (i + 1) * self.setting.batch_size
@@ -183,7 +186,8 @@ class Recommendation_Model():
                              }
                 vali_acc = self.sess.run(self.accuracy, feed_dict=vali_feed)
                 Vali_sum = Vali_sum + vali_acc
-            print("vali accuracy: ", Vali_sum / (Vali_Song_X.shape[0]//self.setting.batch_size))
+                batch_count = batch_count + 1
+            print("vali accuracy: ", Vali_sum/batch_count)
     
     
     
