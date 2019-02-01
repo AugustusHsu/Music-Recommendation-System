@@ -8,6 +8,7 @@ Created on Tue Jan 15 22:08:51 2019
 
 import tensorflow as tf
 import numpy as np
+import Setting
 import Recommendation_Model
 
 data_dir = 'data/'
@@ -44,9 +45,9 @@ print(Test_Song_Y.shape)
 Test_Tag_X = idx_Tag[400000:,0:5,:]
 print(Test_Tag_X.shape)
 
-tf.reset_default_graph()
+setting = Setting.setting()
 
-SongModel = Recommendation_Model.Recommendation_Model()
+SongModel = Recommendation_Model.Recommendation_Model(setting)
 SongModel.build_graph()
 SongModel.train(Song_X, Tag_X, Song_Y, Vali_Song_X, Vali_Tag_X, Vali_Song_Y)
 SongModel.save_model(model_name = 'Music_Recommendation')
